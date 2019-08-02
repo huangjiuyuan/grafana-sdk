@@ -1,6 +1,6 @@
 <!--*- mode:markdown;mode:orgtbl -*-->
 
-# Grafana SDK [![Go Report Card](https://goreportcard.com/badge/github.com/grafana-tools/sdk)](https://goreportcard.com/report/github.com/grafana-tools/sdk)
+# Grafana SDK [![Go Report Card](https://goreportcard.com/badge/github.com/huangjiuyuan/grafana-sdk)](https://goreportcard.com/report/github.com/huangjiuyuan/grafana-sdk)
 
 SDK for Go language offers a library for interacting with
 [Grafana](http://grafana.org) server from Go applications.  It
@@ -50,7 +50,7 @@ with Grafana then client SDK for Go will be uniquely useful.
    slugify, SDK uses external lib "slug" for algorithm compatibility —
    that is the same package that Grafana server uses.
 
-## Examples [![GoDoc](https://godoc.org/github.com/grafana-tools/sdk?status.svg)](https://godoc.org/github.com/grafana-tools/sdk)
+## Examples [![GoDoc](https://godoc.org/github.com/huangjiuyuan/grafana-sdk?status.svg)](https://godoc.org/github.com/huangjiuyuan/grafana-sdk)
 
 ```go
 	board := sdk.NewBoard("Sample dashboard title")
@@ -83,7 +83,7 @@ You need Grafana API key with _admin rights_ for using these utilities.
 
 Of course Go development environment should be set up first. Then:
 
-    go get github.com/grafana-tools/sdk
+    go get github.com/huangjiuyuan/grafana-sdk
 
 Dependency packages have included into
 distro. [govendor](https://github.com/kardianos/govendor) utility used

@@ -35,7 +35,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/grafana-tools/sdk"
+	sdk "github.com/huangjiuyuan/grafana-sdk"
 )
 
 func main() {
@@ -64,7 +64,7 @@ func main() {
 				log.Println(err)
 				continue
 			}
-			c.DeleteDashboard(board.UpdateSlug())
+			c.DeleteDashboardBySlug(board.UpdateSlug())
 			if err = c.SetDashboard(board, false); err != nil {
 				log.Printf("error on importing dashboard %s", board.Title)
 				continue

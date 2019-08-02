@@ -51,7 +51,7 @@ func (r *Client) GetDashboardByUID(uid string) (Board, BoardProperties, error) {
 	return r.getDashboard("uid/" + uid)
 }
 
-// GetDashboardByUID loads a dashboard and its metadata from Grafana by dashboard slug.
+// GetDashboardBySlug loads a dashboard and its metadata from Grafana by dashboard slug.
 // Deprecated since Grafana v5
 //
 // For dashboards from a filesystem set "file/" prefix for slug. By default dashboards from
@@ -124,8 +124,10 @@ func (r *Client) GetRawDashboard(slug string) ([]byte, BoardProperties, error) {
 // FoundBoard keeps result of search with metadata of a dashboard.
 type FoundBoard struct {
 	ID        uint     `json:"id"`
+	UID       string   `json:"uid,omitempty"`
 	Title     string   `json:"title"`
 	URI       string   `json:"uri"`
+	URL       string   `json:"url,omitempty"`
 	Type      string   `json:"type"`
 	Tags      []string `json:"tags"`
 	IsStarred bool     `json:"isStarred"`
@@ -167,7 +169,7 @@ func (r *Client) SearchDashboards(query string, starred bool, tags ...string) ([
 // newer version or with same dashboard title.
 // Grafana only can create or update a dashboard in a database. File dashboards
 // may be only loaded with HTTP API but not created or updated.
-func (r *Client) SetDashboard(board Board, overwrite bool) error {
+func (r *Client) SetDashboard(board Board, overwrite bool) (StatusMessage, error) {
 	var (
 		isBoardFromDB bool
 		newBoard      struct {
@@ -180,7 +182,7 @@ func (r *Client) SetDashboard(board Board, overwrite bool) error {
 		err  error
 	)
 	if board.Slug, isBoardFromDB = cleanPrefix(board.Slug); !isBoardFromDB {
-		return errors.New("only database dashboard (with 'db/' prefix in a slug) can be set")
+		return StatusMessage{}, errors.New("only database dashboard (with 'db/' prefix in a slug) can be set")
 	}
 	newBoard.Dashboard = board
 	newBoard.Overwrite = overwrite
@@ -188,28 +190,28 @@ func (r *Client) SetDashboard(board Board, overwrite bool) error {
 		newBoard.Dashboard.ID = 0
 	}
 	if raw, err = json.Marshal(newBoard); err != nil {
-		return err
+		return StatusMessage{}, err
 	}
 	if raw, code, err = r.post("api/dashboards/db", nil, raw); err != nil {
-		return err
+		return StatusMessage{}, err
 	}
 	if err = json.Unmarshal(raw, &resp); err != nil {
-		return err
+		return StatusMessage{}, err
 	}
 	switch code {
 	case 401:
-		return fmt.Errorf("%d %s", code, *resp.Message)
+		return StatusMessage{}, fmt.Errorf("%d %s", code, *resp.Message)
 	case 412:
-		return fmt.Errorf("%d %s", code, *resp.Message)
+		return StatusMessage{}, fmt.Errorf("%d %s", code, *resp.Message)
 	}
-	return nil
+	return resp, nil
 }
 
 // SetRawDashboard updates existing dashboard or creates a new one.
 // Contrary to SetDashboard() it accepts raw JSON instead of Board structure.
 // Grafana only can create or update a dashboard in a database. File dashboards
 // may be only loaded with HTTP API but not created or updated.
-func (r *Client) SetRawDashboard(raw []byte) error {
+func (r *Client) SetRawDashboard(raw []byte) (StatusMessage, error) {
 	var (
 		rawResp []byte
 		resp    StatusMessage
@@ -219,7 +221,7 @@ func (r *Client) SetRawDashboard(raw []byte) error {
 		plain   = make(map[string]interface{})
 	)
 	if err = json.Unmarshal(raw, &plain); err != nil {
-		return err
+		return StatusMessage{}, err
 	}
 	// TODO(axel) fragile place, refactor it
 	plain["id"] = 0
@@ -228,38 +230,120 @@ func (r *Client) SetRawDashboard(raw []byte) error {
 	buf.Write(raw)
 	buf.WriteString(`, "overwrite": true}`)
 	if rawResp, code, err = r.post("api/dashboards/db", nil, buf.Bytes()); err != nil {
-		return err
+		return StatusMessage{}, err
 	}
 	if err = json.Unmarshal(rawResp, &resp); err != nil {
-		return err
+		return StatusMessage{}, err
 	}
 	switch code {
 	case 401:
-		return fmt.Errorf("%d %s", code, *resp.Message)
+		return StatusMessage{}, fmt.Errorf("%d %s", code, *resp.Message)
 	case 412:
-		return fmt.Errorf("%d %s", code, *resp.Message)
+		return StatusMessage{}, fmt.Errorf("%d %s", code, *resp.Message)
 	}
-	return nil
+	return resp, nil
 }
 
-// DeleteDashboard deletes dashboard that selected by slug string.
+// DeleteDashboardByUID deletes dashboard that selected by uid string.
+func (r *Client) DeleteDashboardByUID(uid string) (StatusMessage, error) {
+	return r.deleteDashboard("uid/" + uid)
+}
+
+// DeleteDashboardBySlug deletes dashboard that selected by slug string.
+// Deprecated since Grafana v5
+//
 // Grafana only can delete a dashboard in a database. File dashboards
 // may be only loaded with HTTP API but not deteled.
-func (r *Client) DeleteDashboard(slug string) (StatusMessage, error) {
-	var (
-		isBoardFromDB bool
-		raw           []byte
-		reply         StatusMessage
-		err           error
-	)
-	if slug, isBoardFromDB = cleanPrefix(slug); !isBoardFromDB {
+func (r *Client) DeleteDashboardBySlug(slug string) (StatusMessage, error) {
+	slug, isBoardFromDB := cleanPrefix(slug)
+	if !isBoardFromDB {
 		return StatusMessage{}, errors.New("only database dashboards (with 'db/' prefix in a slug) can be removed")
 	}
-	if raw, _, err = r.delete(fmt.Sprintf("api/dashboards/db/%s", slug)); err != nil {
+	path, _ := setPrefix(slug)
+	return r.deleteDashboard(path)
+}
+
+func (r *Client) deleteDashboard(path string) (StatusMessage, error) {
+	var (
+		raw   []byte
+		reply StatusMessage
+		err   error
+	)
+	if raw, _, err = r.delete(fmt.Sprintf("api/dashboards/%s", path)); err != nil {
 		return StatusMessage{}, err
 	}
 	err = json.Unmarshal(raw, &reply)
+	if err != nil {
+		return StatusMessage{}, err
+	}
 	return reply, err
+}
+
+// Permission keeps existing permissions for a dashboard.
+type Permission struct {
+	ID             uint      `json:"id,omitempty"`
+	DashboardID    uint      `json:"dashboardId,omitempty"`
+	Created        time.Time `json:"created,omitempty"`
+	Updated        time.Time `json:"updated,omitempty"`
+	UserID         uint      `json:"userId,omitempty"`
+	UserLogin      string    `json:"userLogin,omitempty"`
+	UserEmail      string    `json:"userEmail,omitempty"`
+	TeamID         uint      `json:"teamId,omitempty"`
+	Team           string    `json:"team,omitempty"`
+	Role           string    `json:"role,omitempty"`
+	Permission     uint      `json:"permission,omitempty"`
+	PermissionName string    `json:"permissionName,omitempty"`
+	UID            string    `json:"uid,omitempty"`
+	Title          string    `json:"title,omitempty"`
+	Slug           string    `json:"slug,omitempty"`
+	IsFolder       bool      `json:"isFolder,omitempty"`
+	URL            string    `json:"url,omitempty"`
+}
+
+// Permissions keeps list of all permissions for a dashboard.
+type Permissions struct {
+	Items []Permission `json:"items"`
+}
+
+// GetDashboardPermissions gets all existing permissions for the dashboard with the given id.
+func (r *Client) GetDashboardPermissions(id uint) ([]Permission, error) {
+	var (
+		raw         []byte
+		permissions []Permission
+		code        int
+		err         error
+	)
+	if raw, code, err = r.get(fmt.Sprintf("/api/dashboards/id/%d/permissions", id), nil); err != nil {
+		return []Permission{}, err
+	}
+	if code != 200 {
+		return []Permission{}, fmt.Errorf("HTTP error %d: returns %s", code, raw)
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	if err := dec.Decode(&permissions); err != nil {
+		return []Permission{}, fmt.Errorf("unmarshal permissions for dashboard %d with meta: %s\n%s", id, err, raw)
+	}
+	return permissions, err
+}
+
+// UpdateDashboardPermissions gets all existing permissions for the dashboard with the given id.
+func (r *Client) UpdateDashboardPermissions(permissions Permissions, id uint) (StatusMessage, error) {
+	var (
+		raw  []byte
+		resp StatusMessage
+		err  error
+	)
+	if raw, err = json.Marshal(permissions); err != nil {
+		return StatusMessage{}, err
+	}
+	if raw, _, err = r.post(fmt.Sprintf("/api/dashboards/id/%d/permissions", id), nil, raw); err != nil {
+		return StatusMessage{}, err
+	}
+	if err = json.Unmarshal(raw, &resp); err != nil {
+		return StatusMessage{}, err
+	}
+	return resp, nil
 }
 
 // implicitly use dashboards from Grafana DB not from a file system

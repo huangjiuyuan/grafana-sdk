@@ -41,3 +41,19 @@ func (r *Client) SwitchUserContext(uid uint, oid uint) (StatusMessage, error) {
 	}
 	return resp, nil
 }
+
+// DeleteUser deletes an user by ID.
+func (r *Client) DeleteUser(id uint) (StatusMessage, error) {
+	var (
+		raw  []byte
+		resp StatusMessage
+		err  error
+	)
+	if raw, _, err = r.delete(fmt.Sprintf("/api/admin/users/%d", id)); err != nil {
+		return StatusMessage{}, err
+	}
+	if err = json.Unmarshal(raw, &resp); err != nil {
+		return StatusMessage{}, err
+	}
+	return resp, nil
+}
